@@ -46,15 +46,14 @@ Prebuilt Apple Silicon (arm64) builds are attached to each
 1. Download the `.dmg`, open it, and drag `yourSkoda.app` into the
    `Applications` shortcut inside.
 2. Releases are code-signed with a real Developer ID Application certificate
-   (see [Cutting a release](#cutting-a-release)) but **not notarized**, so
-   Gatekeeper will still show a warning the first time you open it (macOS
-   requires notarization to skip this entirely, even for signed apps). Either:
-   - Right-click (or Control-click) `yourSkoda.app` → **Open** → **Open** in
-     the confirmation dialog, or, on macOS Sequoia and later, go to
-     **System Settings → Privacy & Security** and choose **Open Anyway** next
-     to the yourSkoda warning, or
-   - Run `xattr -cr /Applications/yourSkoda.app` in Terminal once, then open
-     it normally.
+   and notarized by Apple (see [Cutting a release](#cutting-a-release)), so it
+   should open normally with no Gatekeeper warning. If a given release was
+   published before notarization was set up, or notarization failed for that
+   build, you may briefly see **"yourSkoda" Not Opened** with no bypass option
+   — in that case, run this once in Terminal, then open it normally:
+   ```sh
+   xattr -cr /Applications/yourSkoda.app
+   ```
 3. Requires macOS 14 (Sonoma) or later, Apple Silicon.
 
 ## Getting your API key
@@ -112,7 +111,8 @@ git push origin v1.0.0
 
 The workflow builds the arm64 `.app`, code-signs it with a real
 **Developer ID Application** certificate from the runner's Keychain,
-packages it as a `.dmg` (via `scripts/make_dmg.sh`), and publishes it as a
+packages it as a `.dmg` (via `scripts/make_dmg.sh`), submits it to Apple's
+notary service, staples the notarization ticket, and publishes it as a
 Release asset with auto-generated notes.
 
 One-time setup on the runner:
@@ -127,25 +127,39 @@ One-time setup on the runner:
 3. In the GitHub repo, add a repository **variable** (Settings → Secrets and
    variables → Actions → Variables) named `CODESIGN_IDENTITY` with that exact
    string, e.g. `Developer ID Application: Your Name (TEAMID)`.
+4. Generate an app-specific password at
+   [appleid.apple.com](https://appleid.apple.com) → Sign-In and Security →
+   App-Specific Passwords, then store a `notarytool` credential profile in
+   the runner's Keychain (this is a one-time, local-only step — nothing is
+   sent to GitHub):
+   ```sh
+   xcrun notarytool store-credentials "yourskoda-notary" \
+     --apple-id "you@example.com" \
+     --team-id "TEAMID" \
+     --password "the-app-specific-password"
+   ```
+   (An App Store Connect API key works too — see `scripts/make_dmg.sh` for
+   the `--key`/`--key-id`/`--issuer` form.) If you use a profile name other
+   than `yourskoda-notary`, also add a repository variable `NOTARY_PROFILE`
+   with that name.
 
-The workflow fails fast with a clear error if the variable is unset or the
-identity can't be found in the runner's Keychain.
+The workflow fails fast if `CODESIGN_IDENTITY` is unset or not found in the
+runner's Keychain. Notarization is best-effort: if the credential profile is
+missing or Apple's notary service rejects the submission, the build still
+publishes a signed-but-not-notarized `.dmg` rather than failing the release
+(see [Download](#download) for what that means for end users).
 
 To build the same artifact locally instead (e.g. to test before tagging):
 
 ```sh
-# Ad-hoc signed (default, matches local dev builds)
+# Ad-hoc signed (default, matches local dev builds, no notarization)
 ./scripts/make_dmg.sh 1.0.0
 
-# Or with a real identity, same as CI:
+# Or signed + notarized, same as CI:
 CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
   ./scripts/make_dmg.sh 1.0.0
 # -> build/dist/yourSkoda-1.0.0-macos-arm64.dmg (+ .sha256)
 ```
-
-Notarization is intentionally not part of this pipeline — the app is signed
-but not submitted to Apple's notary service, so first-launch Gatekeeper
-approval is still required (see [Download](#download)).
 
 ## Project layout
 
