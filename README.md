@@ -9,6 +9,17 @@ Built with SwiftUI + Swift Package Manager, no Xcode project required. Not
 affiliated with Škoda Auto; this is an unofficial client for the public API
 documented at https://public.api.connect.skoda-auto.cz/docs/swagger-ui/index.html.
 
+## Screenshots
+
+|  |  |
+| :--: | :--: |
+| <img src="screenshots/yourSkoda_overview.png" alt="Overview tab" width="420"> | <img src="screenshots/yourSkoda_charging.png" alt="Charging tab" width="420"> |
+| **Overview** | **Charging** |
+| <img src="screenshots/yourSkoda_charging_profiles.png" alt="Charging profiles tab" width="420"> | <img src="screenshots/yourSkoda_climate.png" alt="Climate tab" width="420"> |
+| **Charging profiles** | **Climate** |
+| <img src="screenshots/yourSkoda_location.png" alt="Location tab" width="420"> |  |
+| **Location** |  |
+
 ## Features
 
 Implements every operation exposed by the Public API (v1.0.0-beta.6):
@@ -113,6 +124,7 @@ Sources/YourSkoda/
   Store/          AppStore — the app's observable state, polling, actions
   Views/          SwiftUI screens (sidebar, overview, climate, charging, map, profiles, settings)
 scripts/          Icon generator + .app bundler
+screenshots/      PNGs used in this README
 ```
 
 ## Notes on the API
