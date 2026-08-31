@@ -3,7 +3,7 @@ import SwiftUI
 import Combine
 
 @MainActor
-final class VehicleState: ObservableObject, @MainActor Identifiable {
+final class VehicleState: ObservableObject, Identifiable {
     let vin: String
     @Published var response: VehicleResponse?
     @Published var isLoading: Bool = false
