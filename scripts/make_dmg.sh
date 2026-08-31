@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Builds the arm64 .app (via build_app.sh) and packages it into a signed,
-# drag-to-Applications .dmg ready for a GitHub Release asset.
+# (optionally notarized) drag-to-Applications .dmg ready for a GitHub Release asset.
 #
 # Usage:
 #   ./scripts/make_dmg.sh [version]
@@ -8,7 +8,20 @@
 # If [version] is omitted, it's derived from `git describe --tags` (falls back to "dev").
 #
 # Respects CODESIGN_IDENTITY (see build_app.sh) for signing both the .app inside
-# the image and the .dmg itself. With no identity set, everything is ad-hoc signed.
+# the image and the .dmg itself. With no identity set, everything is ad-hoc signed
+# and notarization is skipped (Apple only notarizes Developer ID signed software).
+#
+# Notarization uses a Keychain-stored notarytool credential profile rather than
+# passing an Apple ID password or API key around. One-time setup on this machine:
+#
+#   xcrun notarytool store-credentials "yourskoda-notary" \
+#     --apple-id "you@example.com" \
+#     --team-id "TEAMID" \
+#     --password "app-specific-password"   # generate at appleid.apple.com
+#
+# (Or use --key/--key-id/--issuer for an App Store Connect API key instead of
+# an Apple ID + app-specific password.) Then export NOTARY_PROFILE with that
+# profile name (defaults to "yourskoda-notary" below) before running this script.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -16,6 +29,7 @@ cd "$ROOT_DIR"
 
 APP_NAME="yourSkoda"
 CODESIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-yourskoda-notary}"
 
 VERSION="${1:-}"
 if [[ -z "$VERSION" ]]; then
@@ -68,6 +82,19 @@ if [[ "$CODESIGN_IDENTITY" != "-" ]]; then
   fi
   echo "==> Verifying DMG signature..."
   codesign --verify --verbose=2 "$FINAL_DMG"
+
+  echo "==> Submitting DMG to Apple notary service (profile: $NOTARY_PROFILE) ..."
+  if xcrun notarytool submit "$FINAL_DMG" --keychain-profile "$NOTARY_PROFILE" --wait; then
+    echo "==> Stapling notarization ticket..."
+    xcrun stapler staple "$FINAL_DMG"
+
+    echo "==> Verifying Gatekeeper acceptance..."
+    spctl --assess --type open --context context:primary-signature -v "$FINAL_DMG"
+  else
+    echo "==> Notarization failed or no credential profile named '$NOTARY_PROFILE' in Keychain."
+    echo "    Continuing with a signed-but-not-notarized .dmg (see script header for one-time setup)."
+    echo "    Downloads will show a Gatekeeper block until notarized."
+  fi
 else
   echo "==> Skipping DMG code signing (ad-hoc identity; DMG itself is left unsigned)."
 fi
