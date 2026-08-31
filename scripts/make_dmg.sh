@@ -48,7 +48,24 @@ mv "$RAW_DMG" "$FINAL_DMG"
 
 if [[ "$CODESIGN_IDENTITY" != "-" ]]; then
   echo "==> Code signing DMG with identity: $CODESIGN_IDENTITY ..."
-  codesign --force --sign "$CODESIGN_IDENTITY" --timestamp "$FINAL_DMG"
+  # The app inside is already signed + timestamped by build_app.sh, which is
+  # what Gatekeeper actually evaluates on launch. Signing the .dmg itself is a
+  # nice-to-have (verifies the disk image wasn't tampered with in transit), so
+  # retry the timestamp server a couple of times, then fall back to a
+  # non-timestamped signature rather than failing the whole release.
+  signed=0
+  for attempt in 1 2 3; do
+    if codesign --force --sign "$CODESIGN_IDENTITY" --timestamp "$FINAL_DMG"; then
+      signed=1
+      break
+    fi
+    echo "==> DMG timestamp signing attempt $attempt failed, retrying in 5s..."
+    sleep 5
+  done
+  if [[ "$signed" -eq 0 ]]; then
+    echo "==> Timestamp service unavailable after retries; signing DMG without a timestamp."
+    codesign --force --sign "$CODESIGN_IDENTITY" "$FINAL_DMG"
+  fi
   echo "==> Verifying DMG signature..."
   codesign --verify --verbose=2 "$FINAL_DMG"
 else
