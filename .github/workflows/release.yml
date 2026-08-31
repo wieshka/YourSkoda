@@ -1,7 +1,8 @@
 name: Release
 
-# Builds the arm64 macOS .app and publishes it as a GitHub Release asset whenever
-# a version tag like "v1.0.0" is pushed.
+# Builds the arm64 macOS .app, code-signs it with a real Developer ID identity
+# on the self-hosted runner's Keychain, packages it as a .dmg, and publishes it
+# as a GitHub Release asset whenever a version tag like "v1.0.0" is pushed.
 on:
   push:
     tags:
@@ -12,7 +13,11 @@ permissions:
 
 jobs:
   build-and-release:
-    runs-on: macos-14 # Apple Silicon (arm64) runner
+    # Runs on your own registered runner (must be Apple Silicon macOS with the
+    # Developer ID Application certificate + key in its Keychain, unlocked).
+    runs-on: self-hosted
+    env:
+      CODESIGN_IDENTITY: ${{ vars.CODESIGN_IDENTITY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,8 +27,20 @@ jobs:
           uname -m
           swift --version
 
-      - name: Package release build
-        run: ./scripts/package_release.sh "${GITHUB_REF_NAME}"
+      - name: Verify signing identity is available
+        run: |
+          if [[ -z "${CODESIGN_IDENTITY:-}" ]]; then
+            echo "::error::Repository variable CODESIGN_IDENTITY is not set (Settings > Secrets and variables > Actions > Variables). Falling back to ad-hoc signing."
+            exit 1
+          fi
+          echo "==> Looking for identity: $CODESIGN_IDENTITY"
+          security find-identity -v -p codesigning | grep -F "$CODESIGN_IDENTITY" || {
+            echo "::error::Signing identity '$CODESIGN_IDENTITY' not found in this runner's Keychain. Run 'security find-identity -v -p codesigning' on the runner to list available identities."
+            exit 1
+          }
+
+      - name: Package signed release build (.dmg)
+        run: ./scripts/make_dmg.sh "${GITHUB_REF_NAME}"
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2

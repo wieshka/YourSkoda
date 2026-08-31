@@ -1,5 +1,16 @@
 #!/bin/zsh
 # Builds a release .app bundle for yourSkoda and (optionally) drops it into /Applications.
+#
+# Code signing identity:
+#   By default this ad-hoc signs the app (identifier-only, no real identity) which is
+#   fine for local development. To produce a properly signed build (e.g. on the
+#   self-hosted release runner), export CODESIGN_IDENTITY first:
+#
+#     export CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+#     ./scripts/build_app.sh
+#
+# Find the exact identity string with:
+#     security find-identity -v -p codesigning
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -7,6 +18,7 @@ cd "$ROOT_DIR"
 
 APP_NAME="yourSkoda"
 BUNDLE_ID="com.yourskoda.app"
+CODESIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
 BUILD_DIR="$ROOT_DIR/.build/apple/Products/Release"
 APP_BUNDLE="$ROOT_DIR/build/${APP_NAME}.app"
 
@@ -28,8 +40,18 @@ cp "$BIN_PATH" "$APP_BUNDLE/Contents/MacOS/YourSkoda"
 cp "$ROOT_DIR/Resources/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
 cp "$ROOT_DIR/Resources/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 
-echo "==> Code signing (ad-hoc)..."
-codesign --force --deep --sign - --identifier "$BUNDLE_ID" "$APP_BUNDLE"
+if [[ "$CODESIGN_IDENTITY" == "-" ]]; then
+  echo "==> Code signing (ad-hoc)..."
+  codesign --force --deep --sign - --identifier "$BUNDLE_ID" "$APP_BUNDLE"
+else
+  echo "==> Code signing with identity: $CODESIGN_IDENTITY ..."
+  # --options runtime (hardened runtime) + --timestamp are required for a
+  # Developer ID signature Gatekeeper will accept.
+  codesign --force --deep --options runtime --timestamp \
+    --sign "$CODESIGN_IDENTITY" --identifier "$BUNDLE_ID" "$APP_BUNDLE"
+  echo "==> Verifying signature..."
+  codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
+fi
 
 echo "==> Done: $APP_BUNDLE"
 

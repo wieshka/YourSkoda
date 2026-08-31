@@ -41,14 +41,18 @@ Implements every operation exposed by the Public API (v1.0.0-beta.6):
 ## Download
 
 Prebuilt Apple Silicon (arm64) builds are attached to each
-[GitHub Release](../../releases) as `yourSkoda-<version>-macos-arm64.zip`.
+[GitHub Release](../../releases) as `yourSkoda-<version>-macos-arm64.dmg`.
 
-1. Download and unzip it, then drag `yourSkoda.app` to `/Applications`.
-2. The app is **ad-hoc signed, not notarized** (no Apple Developer account is
-   used for this project), so Gatekeeper will refuse to open it with
-   "cannot be opened because it is from an unidentified developer." Either:
+1. Download the `.dmg`, open it, and drag `yourSkoda.app` into the
+   `Applications` shortcut inside.
+2. Releases are code-signed with a real Developer ID Application certificate
+   (see [Cutting a release](#cutting-a-release)) but **not notarized**, so
+   Gatekeeper will still show a warning the first time you open it (macOS
+   requires notarization to skip this entirely, even for signed apps). Either:
    - Right-click (or Control-click) `yourSkoda.app` → **Open** → **Open** in
-     the confirmation dialog, or
+     the confirmation dialog, or, on macOS Sequoia and later, go to
+     **System Settings → Privacy & Security** and choose **Open Anyway** next
+     to the yourSkoda warning, or
    - Run `xattr -cr /Applications/yourSkoda.app` in Terminal once, then open
      it normally.
 3. Requires macOS 14 (Sonoma) or later, Apple Silicon.
@@ -81,8 +85,10 @@ swift run
 
 `scripts/build_app.sh` builds a release binary, packages it with the
 generated icon (`Resources/AppIcon.icns`) and `Info.plist` into
-`build/yourSkoda.app`, and ad-hoc code-signs it so Keychain access works
-consistently between launches.
+`build/yourSkoda.app`, and code-signs it — ad-hoc by default (so Keychain
+access works consistently between launches), or with a real identity if
+`CODESIGN_IDENTITY` is set in the environment (see
+[Cutting a release](#cutting-a-release)).
 
 To regenerate the app icon (`scripts/generate_icon.swift`, pure AppKit/Core
 Graphics, no external assets):
@@ -94,25 +100,52 @@ iconutil -c icns Resources/AppIcon.iconset -o Resources/AppIcon.icns
 
 ## Cutting a release
 
-Releases are built automatically by
-[`.github/workflows/release.yml`](.github/workflows/release.yml) whenever a
-tag matching `v*.*.*` is pushed:
+Releases are built by
+[`.github/workflows/release.yml`](.github/workflows/release.yml) on a
+**self-hosted runner** (registered on a Mac that holds the signing
+certificate) whenever a tag matching `v*.*.*` is pushed:
 
 ```sh
 git tag v1.0.0
 git push origin v1.0.0
 ```
 
-GitHub Actions then builds the arm64 `.app` on a macOS runner, zips it (via
-`scripts/package_release.sh`), and publishes it as a Release asset with
-auto-generated notes — no local machine required.
+The workflow builds the arm64 `.app`, code-signs it with a real
+**Developer ID Application** certificate from the runner's Keychain,
+packages it as a `.dmg` (via `scripts/make_dmg.sh`), and publishes it as a
+Release asset with auto-generated notes.
+
+One-time setup on the runner:
+
+1. Import your Developer ID Application certificate + private key into the
+   Keychain the runner process uses (typically the login keychain of the
+   logged-in session that started the runner), and make sure it's unlocked.
+2. Find the exact identity string:
+   ```sh
+   security find-identity -v -p codesigning
+   ```
+3. In the GitHub repo, add a repository **variable** (Settings → Secrets and
+   variables → Actions → Variables) named `CODESIGN_IDENTITY` with that exact
+   string, e.g. `Developer ID Application: Your Name (TEAMID)`.
+
+The workflow fails fast with a clear error if the variable is unset or the
+identity can't be found in the runner's Keychain.
 
 To build the same artifact locally instead (e.g. to test before tagging):
 
 ```sh
-./scripts/package_release.sh 1.0.0
-# -> build/dist/yourSkoda-1.0.0-macos-arm64.zip (+ .sha256)
+# Ad-hoc signed (default, matches local dev builds)
+./scripts/make_dmg.sh 1.0.0
+
+# Or with a real identity, same as CI:
+CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+  ./scripts/make_dmg.sh 1.0.0
+# -> build/dist/yourSkoda-1.0.0-macos-arm64.dmg (+ .sha256)
 ```
+
+Notarization is intentionally not part of this pipeline — the app is signed
+but not submitted to Apple's notary service, so first-launch Gatekeeper
+approval is still required (see [Download](#download)).
 
 ## Project layout
 

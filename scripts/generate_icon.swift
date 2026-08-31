@@ -15,11 +15,27 @@ let sizes: [(Int, String)] = [
 let outDir = URL(fileURLWithPath: "Resources/AppIcon.iconset")
 try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
 
-func makeIcon(size: Int) -> NSImage {
+func makeIcon(size: Int) -> NSBitmapImageRep {
     let s = CGFloat(size)
-    let image = NSImage(size: NSSize(width: s, height: s))
-    image.lockFocus()
-    guard let ctx = NSGraphicsContext.current?.cgContext else { image.unlockFocus(); return image }
+    // Render into an exact-pixel-size bitmap context (independent of the current
+    // screen's backing scale factor) so every exported PNG has the pixel
+    // dimensions its filename promises, e.g. icon_512x512@2x.png is 1024x1024.
+    let rep = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: size,
+        pixelsHigh: size,
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+    )!
+    NSGraphicsContext.saveGraphicsState()
+    let nsContext = NSGraphicsContext(bitmapImageRep: rep)!
+    NSGraphicsContext.current = nsContext
+    let ctx = nsContext.cgContext
 
     let rect = CGRect(x: 0, y: 0, width: s, height: s)
     let corner = s * 0.225
@@ -63,15 +79,15 @@ func makeIcon(size: Int) -> NSImage {
         tinted.draw(in: CGRect(origin: origin, size: drawSize), from: .zero, operation: .sourceOver, fraction: 1.0)
     }
 
-    image.unlockFocus()
-    return image
+    NSGraphicsContext.restoreGraphicsState()
+    return rep
 }
 
 for (size, name) in sizes {
-    let image = makeIcon(size: size)
-    guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
-          let png = rep.representation(using: .png, properties: [:]) else { continue }
+    let rep = makeIcon(size: size)
+    guard let png = rep.representation(using: .png, properties: [:]) else { continue }
     let url = outDir.appendingPathComponent("\(name).png")
     try? png.write(to: url)
-    print("Wrote \(url.path)")
+    print("Wrote \(url.path) (\(size)x\(size))")
 }
+
