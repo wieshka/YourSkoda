@@ -27,6 +27,21 @@ Implements every operation exposed by the Public API (v1.0.0-beta.6):
 - **Auto-refresh** with a configurable interval, rate-limit visibility, and
   API key expiry tracking (the API exposes both via response headers).
 
+## Download
+
+Prebuilt Apple Silicon (arm64) builds are attached to each
+[GitHub Release](../../releases) as `yourSkoda-<version>-macos-arm64.zip`.
+
+1. Download and unzip it, then drag `yourSkoda.app` to `/Applications`.
+2. The app is **ad-hoc signed, not notarized** (no Apple Developer account is
+   used for this project), so Gatekeeper will refuse to open it with
+   "cannot be opened because it is from an unidentified developer." Either:
+   - Right-click (or Control-click) `yourSkoda.app` → **Open** → **Open** in
+     the confirmation dialog, or
+   - Run `xattr -cr /Applications/yourSkoda.app` in Terminal once, then open
+     it normally.
+3. Requires macOS 14 (Sonoma) or later, Apple Silicon.
+
 ## Getting your API key
 
 The Public API authenticates with a simple API key header (`X-API-Key`), not
@@ -64,6 +79,28 @@ Graphics, no external assets):
 ```sh
 swift scripts/generate_icon.swift
 iconutil -c icns Resources/AppIcon.iconset -o Resources/AppIcon.icns
+```
+
+## Cutting a release
+
+Releases are built automatically by
+[`.github/workflows/release.yml`](.github/workflows/release.yml) whenever a
+tag matching `v*.*.*` is pushed:
+
+```sh
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+GitHub Actions then builds the arm64 `.app` on a macOS runner, zips it (via
+`scripts/package_release.sh`), and publishes it as a Release asset with
+auto-generated notes — no local machine required.
+
+To build the same artifact locally instead (e.g. to test before tagging):
+
+```sh
+./scripts/package_release.sh 1.0.0
+# -> build/dist/yourSkoda-1.0.0-macos-arm64.zip (+ .sha256)
 ```
 
 ## Project layout

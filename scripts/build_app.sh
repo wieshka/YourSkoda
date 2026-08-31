@@ -10,10 +10,10 @@ BUNDLE_ID="com.yourskoda.app"
 BUILD_DIR="$ROOT_DIR/.build/apple/Products/Release"
 APP_BUNDLE="$ROOT_DIR/build/${APP_NAME}.app"
 
-echo "==> Building release binary..."
-swift build -c release
+echo "==> Building release binary (arm64)..."
+swift build -c release --arch arm64
 
-BIN_PATH="$ROOT_DIR/.build/release/YourSkoda"
+BIN_PATH="$ROOT_DIR/.build/arm64-apple-macosx/release/YourSkoda"
 if [[ ! -f "$BIN_PATH" ]]; then
   echo "Release binary not found at $BIN_PATH" >&2
   exit 1
