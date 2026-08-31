@@ -85,11 +85,30 @@ if [[ "$CODESIGN_IDENTITY" != "-" ]]; then
 
   echo "==> Submitting DMG to Apple notary service (profile: $NOTARY_PROFILE) ..."
   if xcrun notarytool submit "$FINAL_DMG" --keychain-profile "$NOTARY_PROFILE" --wait; then
-    echo "==> Stapling notarization ticket..."
-    xcrun stapler staple "$FINAL_DMG"
-
-    echo "==> Verifying Gatekeeper acceptance..."
-    spctl --assess --type open --context context:primary-signature -v "$FINAL_DMG"
+    # Stapling talks to Apple's CloudKit-backed ticket delivery service
+    # (api.apple-cloudkit.com), which is more prone to breaking on networks
+    # with TLS-inspecting proxies than the notarization submission itself.
+    # The notarization ticket already exists on Apple's servers once
+    # submission is Accepted above, so Gatekeeper can still verify it online
+    # even if stapling (offline verification) fails here — retry a few times,
+    # then continue without stapling rather than failing the whole release.
+    stapled=0
+    for attempt in 1 2 3; do
+      if xcrun stapler staple "$FINAL_DMG"; then
+        stapled=1
+        break
+      fi
+      echo "==> Stapling attempt $attempt failed, retrying in 10s..."
+      sleep 10
+    done
+    if [[ "$stapled" -eq 1 ]]; then
+      echo "==> Verifying Gatekeeper acceptance..."
+      spctl --assess --type open --context context:primary-signature -v "$FINAL_DMG"
+    else
+      echo "==> Stapling failed after retries (often a TLS-inspecting proxy blocking api.apple-cloudkit.com)."
+      echo "    The .dmg is still notarized server-side; Gatekeeper will verify it online on first launch."
+      echo "    It just won't work fully offline until stapled. Re-run 'xcrun stapler staple' later if needed."
+    fi
   else
     echo "==> Notarization failed or no credential profile named '$NOTARY_PROFILE' in Keychain."
     echo "    Continuing with a signed-but-not-notarized .dmg (see script header for one-time setup)."

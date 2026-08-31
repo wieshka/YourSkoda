@@ -149,6 +149,16 @@ missing or Apple's notary service rejects the submission, the build still
 publishes a signed-but-not-notarized `.dmg` rather than failing the release
 (see [Download](#download) for what that means for end users).
 
+**Stapling caveat on corporate networks:** notarization itself talks to
+Apple's notary API, but *stapling* the ticket (so the `.dmg` verifies fully
+offline) talks to `api.apple-cloudkit.com`, which TLS-inspecting corporate
+proxies commonly block with a certificate trust error. If that happens the
+script retries a few times, then continues without stapling — the release is
+still notarized server-side and Gatekeeper will verify it online on first
+launch (an internet connection is required at that point, same as any
+first-run Gatekeeper check). If your runner is behind such a proxy, either
+allowlist `api.apple-cloudkit.com`, or run the runner/build off that network.
+
 To build the same artifact locally instead (e.g. to test before tagging):
 
 ```sh
